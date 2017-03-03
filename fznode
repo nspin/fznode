@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+from argparse import ArgumentParser, REMAINDER
+from subprocess import Popen, PIPE, DEVNULL
+
+DEC_DEPTH = 'ctrl-a'
+INC_DEPTH = 'ctrl-s'
+UP_TREE   = 'ctrl-f'
+DOWN_TREE = 'ctrl-g'
+HIDE_HIDDEN = 'ctrl-h'
+SHOW_HIDDEN = 'ctrl-o'
+
+
+def resolve_link(path):
+    while os.path.islink(path):
+        path = os.readlink(path)
+    return path
+
+
+def resolve_link_to_dir(path):
+    if os.path.islink(path):
+        return resolve_link_to_dir(os.readlink(path))
+    elif os.path.isdir(path):
+        return path
+    elif os.path.isfile(path):
+        return os.path.dirname(path)
+    else:
+        return None
+
+
+class Chooser(object):
+
+    def __init__(self,
+            base_dir,
+            just_leaf=True,
+            hide_hidden=False,
+            max_depth=3,
+            find_predicate=[],
+            ):
+
+        self.base_dir = base_dir
+        self.just_leaf = just_leaf 
+        self.hide_hidden = hide_hidden 
+        self.max_depth = max_depth 
+        self.find_predicate = find_predicate 
+
+
+    def fzf_args(self):
+        expects = [UP_TREE, INC_DEPTH, DEC_DEPTH]
+        if not self.just_leaf:
+            expects.append(DOWN_TREE)
+        if self.hide_hidden:
+            expects.append(SHOW_HIDDEN)
+        else:
+            expects.append(HIDE_HIDDEN)
+        return [
+            'fzf',
+            '--nth=2..',
+            '--header=' + os.path.abspath(self.base_dir),
+            '--expect=' + ','.join(expects)
+            ]
+
+
+    def find_args(self):
+        args = ['find', self.base_dir, '-maxdepth', str(self.max_depth)]
+        if self.hide_hidden:
+            args.extend(['(', '-regex', '.*/\.[^./].*', '-prune', ')', '-o'])
+        args.append('(')
+        if self.find_predicate:
+            args.extend(self.find_predicate)
+        else:
+            args.append('-true')
+        args.extend([')', '-print'])
+        return args
+
+
+    def interact(self):
+
+        find_proc = Popen(self.find_args(), stdout=PIPE, stderr=DEVNULL)
+        fzf_proc = Popen(self.fzf_args(), stdin=PIPE, stdout=PIPE)
+
+        for line in find_proc.stdout:
+            node = line.decode('utf8')[:-1]
+            if node != self.base_dir:
+                if os.path.isfile(node):
+                    if os.path.islink(node):
+                        prefix = u'\U000021E5'
+                    else:
+                        prefix = u'\U00002022'
+                elif os.path.isdir(node):
+                    if os.path.islink(node):
+                        prefix = u'\U00002192' # u'\U000021A0'
+                    else:
+                        prefix = u'\U000025B6'
+                else:
+                    prefix = '?'
+                chop = 1 if self.base_dir == '/' else len(self.base_dir) + 1 # funky edge case
+                fmt = prefix + ' ' + node[chop:] + '\n'
+                fzf_proc.stdin.write(bytes(fmt, 'UTF-8'))
+                fzf_proc.stdin.flush()
+
+        try:
+            action = next(fzf_proc.stdout).decode('utf8')[:-1]
+            choice = os.path.join(self.base_dir, next(fzf_proc.stdout).decode('utf8')[2:-1])
+            return action, choice
+        except StopIteration:
+            return None
+
+
+    def choose(self):
+        while True:
+            result = self.interact()
+            if result == None:
+                return None
+            action, choice = result
+            if action == UP_TREE:
+                self.base_dir = os.path.join(self.base_dir, os.pardir)
+            elif action == DOWN_TREE:
+                res = resolve_link(choice) 
+                if os.path.isdir(res):
+                    self.base_dir = res
+            elif action == INC_DEPTH:
+                self.max_depth += 1
+            elif action == DEC_DEPTH and 1 < self.max_depth:
+                self.max_depth -= 1
+            elif action == HIDE_HIDDEN:
+                self.hide_hidden = True
+            elif action == SHOW_HIDDEN:
+                self.hide_hidden = False
+            else:
+                if self.just_leaf:
+                    res = resolve_link(choice) 
+                    if os.path.isdir(res):
+                        self.base_dir = res
+                    else:
+                        return choice
+                else:
+                    return choice
+
+
+def mk_parser():
+    parser = ArgumentParser()
+    parser.add_argument('start_node', metavar='START_NODE', default=os.getcwd())
+    parser.add_argument('-l', '--just-leaf', action='store_true')
+    parser.add_argument('--hide-hidden', action='store_true')
+    parser.add_argument('-d', '--max-depth', metavar='MAX_DEPTH')
+    parser.add_argument('-p', '--find-predicate', nargs=REMAINDER)
+    return parser
+
+
+def mk_chooser(args):
+    base_dir = resolve_link_to_dir(args.start_node)
+    if base_dir is None:
+        raise Exception('could not resolve ' + args.start_node)
+    kwargs = dict(
+            just_leaf=args.just_leaf,
+            hide_hidden=args.hide_hidden,
+            )
+    if args.max_depth is not None:
+        kwargs['max_depth'] = args.max_depth
+    if args.find_predicate is not None:
+        kwargs['find_predicate'] = args.find_predicate
+    return Chooser(base_dir, **kwargs)
+
+
+def main():
+    choice = mk_chooser(mk_parser().parse_args()).choose()
+    if choice is not None:
+        print(choice)
+
+
+if __name__ == '__main__':
+    main()
