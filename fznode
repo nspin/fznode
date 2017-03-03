@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import os
-import sys
 from argparse import ArgumentParser, REMAINDER
 from subprocess import Popen, PIPE, DEVNULL
 
@@ -11,23 +10,6 @@ UP_TREE   = 'ctrl-f'
 DOWN_TREE = 'ctrl-g'
 HIDE_HIDDEN = 'ctrl-h'
 SHOW_HIDDEN = 'ctrl-o'
-
-
-def resolve_link(path):
-    while os.path.islink(path):
-        path = os.readlink(path)
-    return path
-
-
-def resolve_link_to_dir(path):
-    if os.path.islink(path):
-        return resolve_link_to_dir(os.readlink(path))
-    elif os.path.isdir(path):
-        return path
-    elif os.path.isfile(path):
-        return os.path.dirname(path)
-    else:
-        return None
 
 
 class Chooser(object):
@@ -118,20 +100,21 @@ class Chooser(object):
             if action == UP_TREE:
                 self.base_dir = os.path.join(self.base_dir, os.pardir)
             elif action == DOWN_TREE:
-                res = resolve_link(choice)
+                res = os.path.realpath(choice)
                 if os.path.isdir(res):
                     self.base_dir = res
             elif action == INC_DEPTH:
                 self.max_depth += 1
-            elif action == DEC_DEPTH and 1 < self.max_depth:
-                self.max_depth -= 1
+            elif action == DEC_DEPTH:
+                if 1 < self.max_depth:
+                    self.max_depth -= 1
             elif action == HIDE_HIDDEN:
                 self.hide_hidden = True
             elif action == SHOW_HIDDEN:
                 self.hide_hidden = False
             else:
                 if self.just_file:
-                    res = resolve_link(choice)
+                    res = os.path.realpath(choice)
                     if os.path.isdir(res):
                         self.base_dir = res
                     else:
@@ -142,7 +125,7 @@ class Chooser(object):
 
 def mk_parser():
     parser = ArgumentParser()
-    parser.add_argument('start_node', metavar='START_NODE', default=os.getcwd())
+    parser.add_argument('start_dir', metavar='START_DIR', default=os.getcwd())
     parser.add_argument('-f', '--just-file', action='store_true')
     parser.add_argument('--show-hidden', action='store_true')
     parser.add_argument('-d', '--max-depth', metavar='MAX_DEPTH')
@@ -151,9 +134,6 @@ def mk_parser():
 
 
 def mk_chooser(args):
-    base_dir = resolve_link_to_dir(args.start_node)
-    if base_dir is None:
-        raise Exception('could not resolve ' + args.start_node)
     kwargs = dict(
             just_file=args.just_file,
             hide_hidden=not args.show_hidden,
@@ -162,7 +142,7 @@ def mk_chooser(args):
         kwargs['max_depth'] = args.max_depth
     if args.find_predicate is not None:
         kwargs['find_predicate'] = args.find_predicate
-    return Chooser(base_dir, **kwargs)
+    return Chooser(args.start_dir, **kwargs)
 
 
 def main():
