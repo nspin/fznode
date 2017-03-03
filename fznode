@@ -34,22 +34,22 @@ class Chooser(object):
 
     def __init__(self,
             base_dir,
-            just_leaf=True,
+            just_file=True,
             hide_hidden=False,
             max_depth=3,
             find_predicate=[],
             ):
 
         self.base_dir = base_dir
-        self.just_leaf = just_leaf 
-        self.hide_hidden = hide_hidden 
-        self.max_depth = max_depth 
-        self.find_predicate = find_predicate 
+        self.just_file = just_file
+        self.hide_hidden = hide_hidden
+        self.max_depth = max_depth
+        self.find_predicate = find_predicate
 
 
     def fzf_args(self):
         expects = [UP_TREE, INC_DEPTH, DEC_DEPTH]
-        if not self.just_leaf:
+        if not self.just_file:
             expects.append(DOWN_TREE)
         if self.hide_hidden:
             expects.append(SHOW_HIDDEN)
@@ -118,7 +118,7 @@ class Chooser(object):
             if action == UP_TREE:
                 self.base_dir = os.path.join(self.base_dir, os.pardir)
             elif action == DOWN_TREE:
-                res = resolve_link(choice) 
+                res = resolve_link(choice)
                 if os.path.isdir(res):
                     self.base_dir = res
             elif action == INC_DEPTH:
@@ -130,8 +130,8 @@ class Chooser(object):
             elif action == SHOW_HIDDEN:
                 self.hide_hidden = False
             else:
-                if self.just_leaf:
-                    res = resolve_link(choice) 
+                if self.just_file:
+                    res = resolve_link(choice)
                     if os.path.isdir(res):
                         self.base_dir = res
                     else:
@@ -143,8 +143,8 @@ class Chooser(object):
 def mk_parser():
     parser = ArgumentParser()
     parser.add_argument('start_node', metavar='START_NODE', default=os.getcwd())
-    parser.add_argument('-l', '--just-leaf', action='store_true')
-    parser.add_argument('--hide-hidden', action='store_true')
+    parser.add_argument('-f', '--just-file', action='store_true')
+    parser.add_argument('--show-hidden', action='store_true')
     parser.add_argument('-d', '--max-depth', metavar='MAX_DEPTH')
     parser.add_argument('-p', '--find-predicate', nargs=REMAINDER)
     return parser
@@ -155,8 +155,8 @@ def mk_chooser(args):
     if base_dir is None:
         raise Exception('could not resolve ' + args.start_node)
     kwargs = dict(
-            just_leaf=args.just_leaf,
-            hide_hidden=args.hide_hidden,
+            just_file=args.just_file,
+            hide_hidden=not args.show_hidden,
             )
     if args.max_depth is not None:
         kwargs['max_depth'] = args.max_depth
