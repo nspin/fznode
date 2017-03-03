@@ -18,14 +18,14 @@ class Chooser(object):
             just_file=True,
             hide_hidden=False,
             max_depth=3,
-            find_predicate=[],
+            find_test=[],
             ):
 
         self.base_dir = base_dir
         self.just_file = just_file
         self.hide_hidden = hide_hidden
         self.max_depth = max_depth
-        self.find_predicate = find_predicate
+        self.find_test = find_test
 
 
     def fzf_args(self):
@@ -49,8 +49,8 @@ class Chooser(object):
         if self.hide_hidden:
             args.extend(['(', '-regex', '.*/\.[^./].*', '-prune', ')', '-o'])
         args.append('(')
-        if self.find_predicate:
-            args.extend(self.find_predicate)
+        if self.find_test:
+            args.extend(self.find_test)
         else:
             args.append('-true')
         args.extend([')', '-print'])
