@@ -5,6 +5,6 @@ setup(
     version = '0.0.1',
     packages = ['fznode'],
     entry_points = {
-        'console_scripts': ['fznode = fznode.__main__:main']
+        'console_scripts': ['fznode = fznode.cli:main']
         },
     )
