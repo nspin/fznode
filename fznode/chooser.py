@@ -3,12 +3,12 @@
 import os
 from subprocess import Popen, PIPE, DEVNULL
 
-DEC_DEPTH = 'ctrl-a'
-INC_DEPTH = 'ctrl-s'
-UP_TREE   = 'ctrl-f'
-DOWN_TREE = 'ctrl-g'
-HIDE_HIDDEN = 'ctrl-h'
-SHOW_HIDDEN = 'ctrl-o'
+DEC_DEPTH = 'ctrl-i'
+INC_DEPTH = 'ctrl-o'
+UP_TREE   = 'ctrl-h'
+DOWN_TREE = 'ctrl-l'
+HIDE_HIDDEN = 'ctrl-.'
+SHOW_HIDDEN = 'ctrl-,'
 
 
 class Chooser(object):
