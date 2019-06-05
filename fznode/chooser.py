@@ -14,6 +14,9 @@ DOWN_TREE = 'ctrl-h'
 HIDE_HIDDEN = 'ctrl-m'
 SHOW_HIDDEN = 'ctrl-n'
 
+find_line_re = re.compile(r'(?P<depth>.) (?P<type>.) (?P<target_type>.) (?P<path>[^\t]*)\t(?P<target>[^\n]*)')
+fzf_line_re = re.compile(r'(?P<is_dir>.) (?P<symbol>.) (?P<path>[^\t]*)(\t\U000021E5 (?P<target>[^\n]*))?')
+
 # @dataclass
 # class StaticConfig:
 #     just_files: bool = True
@@ -26,30 +29,12 @@ SHOW_HIDDEN = 'ctrl-n'
 #     max_depth: int = 3
 
 @dataclass
-class Config:
+class Chooser:
     just_files: bool = True
     extra_find_args: list = []
     extra_fzf_args: list = []
     hide_hidden: bool = False
     max_depth: int = 3
-
-class Chooser(object):
-
-    def __init__(self,
-            base_dir,
-            just_file=True,
-            hide_hidden=False,
-            max_depth=3,
-            extra_find_args=[],
-            extra_fzf_args=[],
-            ):
-
-        self.base_dir = base_dir
-        self.just_file = just_file
-        self.hide_hidden = hide_hidden
-        self.max_depth = max_depth
-        self.extra_find_args = extra_find_args
-        self.extra_fzf_args = extra_fzf_args
 
     def fzf_args(self):
         expects = [UP_TREE, DOWN_TREE, INC_DEPTH, DEC_DEPTH]
@@ -65,20 +50,17 @@ class Chooser(object):
             '--expect=' + ','.join(expects)
             ]
 
-    def find_args(self):
-        args = ['find', '-L', self.base_dir, '-maxdepth', str(self.max_depth)]
+    def find_args(self, base_dir):
+        args = ['find', '-L', base_dir, '-maxdepth', str(self.max_depth)]
         if self.hide_hidden:
             args.extend(['-name', '.*', '-path', '*/*', '-prune', '-o'])
         args.extend(self.extra_find_args)
         args.extend(['-printf', r'%d %y %Y %P\t%l\n'])
         return args
 
-    find_line_re = re.compile(r'(?P<depth>.) (?P<type>.) (?P<target_type>.) (?P<path>[^\t]*)\t(?P<target>[^\n]*)')
-    fzf_line_re = re.compile(r'(?P<is_dir>.) (?P<symbol>.) (?P<path>[^\t]*)(\t\U000021E5 (?P<target>[^\n]*))?')
-
     def process_find_lines(self, it):
         for line in it:
-            m = Chooser.find_line_re.fullmatch(line)
+            m = find_line_re.fullmatch(line)
             assert m is not None
 
             if m['depth'] == '0':
@@ -110,19 +92,21 @@ class Chooser(object):
 
             yield line_out
 
-    # def test(self):
-    #     import sys
-    #     find_proc = Popen(self.find_args(), stdout=PIPE)
-    #     for chunk in self.process_find_lines(lines_of(find_proc.stdout, eol=b'\n')):
-    #         sys.stdout.write(chunk)
-
-    def test(self):
-        return self.step()
-
     def parse_choice(self, choice):
-        m = Chooser.fzf_line_re.fullmatch(choice)
+        m = fzf_line_re.fullmatch(choice)
         assert m is not None
         return m['is_dir'], m['path']
+
+    def stepper(self, base_dir):
+        return Step(self, base_dir)
+
+@dataclass
+class Step:
+    chooser: Chooser
+    base_dir: str
+
+    def find_args(self):
+        return self.chooser.find_args(self.base_dir)
 
     def step(self):
 
@@ -144,20 +128,7 @@ class Chooser(object):
 
         return action, list(map(self.parse_choice, choices))
 
-        # for line in lines_of(find_proc.stdout):
-        #         chop = 1 if self.base_dir == '/' else len(self.base_dir) + 1 # funky edge case
-        #         fmt = prefix + ' ' + node[chop:] + '\n'
-        #         fzf_proc.stdin.write(bytes(fmt, 'UTF-8'))
-        #         fzf_proc.stdin.flush()
-
-        # try:
-        #     action = next(fzf_proc.stdout).decode('utf8')[:-1]
-        #     choice = os.path.join(self.base_dir, next(fzf_proc.stdout).decode('utf8')[2:-1])
-        #     return action, choice
-        # except StopIteration:
-        #     return None
-
-    def choose(self):
+    def choose(self, base_dir):
         while True:
             result = self.interact()
             if result == None:
@@ -165,7 +136,7 @@ class Chooser(object):
             action, choices = result
             for is_dir, path in choices:
                 if action == UP_TREE:
-                    self.base_dir = os.path.join(self.base_dir, os.pardir)
+                    new_base_dir = os.path.join(base_dir, os.pardir)
                 elif action == DOWN_TREE:
                     res = os.path.realpath(choice)
                     if os.path.isdir(res):
@@ -188,3 +159,4 @@ class Chooser(object):
                             return choice
                     else:
                         return choice
+
